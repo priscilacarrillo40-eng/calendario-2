@@ -448,24 +448,24 @@
           mostrarNotificacion("Evento creado con éxito.");
         }
 
-        if (supabaseClient) {
-          try {
-            await supabaseClient.from('eventos').upsert({
-              id: evId,
-              titulo: eventoAlineado.titulo,
-              fecha: eventoAlineado.fecha,
-              hora_inicio: eventoAlineado.horaInicio || '',
-              hora_fin: eventoAlineado.horaFin || '',
-              jornada_completa: eventoAlineado.jornadaCompleta,
-              categoria: eventoAlineado.categoria,
-              ubicacion: eventoAlineado.ubicacion || '',
-              descripcion: eventoAlineado.descripcion || '',
-              importante: eventoAlineado.importante
-            });
-          } catch (err) {
-            console.error("Error enviando a Supabase:", err);
-          }
-        }
+       if (supabaseClient) {
+  try {
+    await supabaseClient.from('eventos').upsert({
+      id: evId,
+      titulo: eventoAlineado.titulo,
+      fecha: eventoAlineado.fecha,
+      hora_inicio: eventoAlineado.horaInicio || '',
+      hora_fin: eventoAlineado.horaFin || '',
+      jornada_completa: eventoAlineado.jornadaCompleta,
+      categoria: catIdFinal, // ✅ Aquí estaba el error (decía datosEvento.categoria)
+      ubicacion: eventoAlineado.ubicacion || '',
+      descripcion: eventoAlineado.descripcion || '',
+      importante: eventoAlineado.importante
+    });
+  } catch (err) {
+    console.error("Error enviando a Supabase:", err);
+  }
+}
 
         setModalNuevoAbierto(false);
         setEventoEditar(null);
