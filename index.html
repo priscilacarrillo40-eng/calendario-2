@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendario Institucional - Multi-Dispositivo</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              200: '#bfdbfe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 & ReactDOM 18 UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Supabase JS Client SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen antialiased selection:bg-brand-500 selection:text-white">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const Icon = ({ name, className = "w-5 h-5", ...props }) => {
+      const icons = {
+        calendar: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+        ),
+        plus: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        ),
+        chevronLeft: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        ),
+        chevronRight: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        ),
+        search: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        ),
+        palette: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>
+            <path d="M12 2C6.49 2 2 6.49 2 12s4.49 10 10 10c1.38 0 2.5-1.12 2.5-2.5 0-.61-.23-1.21-.64-1.67-.38-.43-.6-1-.6-1.6 0-1.38 1.12-2.5 2.5-2.5H18c2.21 0 4-1.79 4-4 0-4.97-4.48-9-10-9z"></path>
+          </svg>
+        ),
+        clock: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        ),
+        alertTriangle: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        ),
+        x: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        ),
+        edit: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+          </svg>
+        ),
+        trash: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        ),
+        database: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+          </svg>
+        ),
+        download: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        ),
+        check: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        ),
+        school: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        ),
+        stickyNote: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        ),
+        refresh: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+        ),
+        code: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        ),
+        wifi: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>
+          </svg>
+        ),
+        info: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        )
+      };
+      return icons[name] || null;
+    };
+
+    const formatDateKey = (dateObj) => {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+    const CATEGORIAS_DEFAULT = {
+      jornada: { id: 'jornada', nombre: 'Jornada Institucional', hex: '#8b5cf6' },
+      cierre: { id: 'cierre', nombre: 'Cierre de Notas', hex: '#ef4444' },
+      acto: { id: 'acto', nombre: 'Acto Escolar', hex: '#f97316' },
+      reunion: { id: 'reunion', nombre: 'Reunión de Personal', hex: '#2563eb' },
+      evaluacion: { id: 'evaluacion', nombre: 'Evaluaciones / Mesas', hex: '#10b981' },
+      importante: { id: 'importante', nombre: 'Fecha Clave', hex: '#d97706' },
+      otro: { id: 'otro', nombre: 'Actividad General', hex: '#64748b' }
+    };
+
+    const EVENTOS_SEMILLA = [
+      {
+        id: 'ev-1',
+        titulo: 'Jornada Institucional de Evaluación',
+        descripcion: 'Análisis de trayectorias pedagógicas del primer trimestre.',
+        fecha: formatDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 12)),
+        horaInicio: '08:00',
+        horaFin: '12:30',
+        jornadaCompleta: false,
+        categoria: 'jornada',
+        ubicacion: 'SUM Principal',
+        importante: true
+      },
+      {
+        id: 'ev-2',
+        titulo: 'Cierre de Notas 1° Trimestre',
+        descripcion: 'Carga completa de calificaciones en la plataforma.',
+        fecha: formatDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 25)),
+        horaInicio: '',
+        horaFin: '',
+        jornadaCompleta: true,
+        categoria: 'cierre',
+        ubicacion: 'Dirección',
+        importante: true
+      },
+      {
+        id: 'ev-3',
+        titulo: 'Reunión de Departamentos',
+        descripcion: 'Coordinación de contenidos y proyectos integradores.',
+        fecha: formatDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 18)),
+        horaInicio: '14:00',
+        horaFin: '16:00',
+        jornadaCompleta: false,
+        categoria: 'reunion',
+        ubicacion: 'Sala de Profesores',
+        importante: false
+      }
+    ];
+
+    function App() {
+      const [modoSupabase, setModoSupabase] = useState(() => localStorage.getItem('sp_enabled') === 'true');
+      const [supabaseUrl, setSupabaseUrl] = useState(() => localStorage.getItem('sp_url') || '');
+      const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => localStorage.getItem('sp_key') || '');
+      const [supabaseClient, setSupabaseClient] = useState(null);
+      const [cargandoNube, setCargandoNube] = useState(false);
+
+      const broadcastChannelRef = useRef(null);
+
+      const [currentDate, setCurrentDate] = useState(new Date());
+      const [vistaModo, setVistaModo] = useState('mes');
+      
+      const [eventos, setEventos] = useState(() => {
+        const local = localStorage.getItem('inst_eventos');
+        return local ? JSON.parse(local) : EVENTOS_SEMILLA;
+      });
+
+      const [categoriasMap, setCategoriasMap] = useState(() => {
+        const local = localStorage.getItem('inst_categorias');
+        return local ? JSON.parse(local) : CATEGORIAS_DEFAULT;
+      });
+
+      const [notasRapidas, setNotasRapidas] = useState(() => {
+        return localStorage.getItem('inst_notas');
+      });
+
+      const [filtroTexto, setFiltroTexto] = useState('');
+      const [filtroCategoria, setFiltroCategoria] = useState('todos');
+      const [filtroImportancia, setFiltroImportancia] = useState('todos');
+
+      const [modalNuevoAbierto, setModalNuevoAbierto] = useState(false);
+      const [modalColoresAbierto, setModalColoresAbierto] = useState(false);
+      const [modalConfigAbierto, setModalConfigAbierto] = useState(false);
+      const [modalSqlAbierto, setModalSqlAbierto] = useState(false);
+      const [eventoSeleccionado, setEventoSeleccionado] = useState(null);
+      const [eventoEditar, setEventoEditar] = useState(null);
+      const [eventoAEliminar, setEventoAEliminar] = useState(null);
+      const [notificacion, setNotificacion] = useState(null);
+
+      const mostrarNotificacion = (texto, tipo = 'exito') => {
+        setNotificacion({ texto, tipo });
+        setTimeout(() => setNotificacion(null), 4000);
+      };
+
+      useEffect(() => {
+        if ('BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('calendario_institucional_sync');
+          broadcastChannelRef.current = bc;
+          bc.onmessage = (event) => {
+            if (event.data?.type === 'SYNC_EVENTOS') {
+              setEventos(event.data.payload);
+            } else if (event.data?.type === 'SYNC_CATEGORIAS') {
+              setCategoriasMap(event.data.payload);
+            } else if (event.data?.type === 'SYNC_NOTAS') {
+              setNotasRapidas(event.data.payload);
+            }
+          };
+          return () => bc.close();
+        }
+      }, []);
+
+      const cargarDatosSupabase = async (client) => {
+        if (!client) return;
+        setCargandoNube(true);
+        try {
+          const { data: dataEv, error: errEv } = await client.from('eventos').select('*');
+          if (!errEv && dataEv) {
+            const evsNormalizados = dataEv.map(item => ({
+              id: item.id,
+              titulo: item.titulo,
+              fecha: item.fecha,
+              horaInicio: item.hora_inicio || item.horaInicio || '',
+              horaFin: item.hora_fin || item.horaFin || '',
+              jornadaCompleta: item.jornada_completa ?? item.jornadaCompleta ?? false,
+              categoria: item.categoria,
+              ubicacion: item.ubicacion || '',
+              descripcion: item.descripcion || '',
+              importante: item.importante ?? false
+            }));
+            setEventos(evsNormalizados);
+            localStorage.setItem('inst_eventos', JSON.stringify(evsNormalizados));
+          }
+
+          const { data: dataCat, error: errCat } = await client.from('categorias').select('*');
+          if (!errCat && dataCat && dataCat.length > 0) {
+            const catMapObj = {};
+            dataCat.forEach(c => {
+              catMapObj[c.id] = { id: c.id, nombre: c.nombre, hex: c.hex };
+            });
+            setCategoriasMap(catMapObj);
+            localStorage.setItem('inst_categorias', JSON.stringify(catMapObj));
+          }
+
+          const { data: dataNotas, error: errNotas } = await client.from('notas').select('*').eq('id', 'global_note');
+          if (!errNotas && dataNotas && dataNotas.length > 0) {
+            const textoNota = dataNotas[0].contenido || '';
+            setNotasRapidas(textoNota);
+            localStorage.setItem('inst_notas', textoNota);
+          }
+        } catch (err) {
+          console.error("Error al sincronizar con Supabase:", err);
+          mostrarNotificacion("Aviso: No se pudo leer las tablas de Supabase.", "error");
+        } finally {
+          setCargandoNube(false);
+        }
+      };
+
+      useEffect(() => {
+        if (modoSupabase && supabaseUrl && supabaseAnonKey) {
+          try {
+            const client = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+            setSupabaseClient(client);
+            cargarDatosSupabase(client);
+
+            const channel = client.channel('public:realtime_calendario')
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'eventos' }, () => {
+                cargarDatosSupabase(client);
+              })
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'categorias' }, () => {
+                cargarDatosSupabase(client);
+              })
+              .on('postgres_changes', { event: '*', schema: 'public', table: 'notas' }, () => {
+                cargarDatosSupabase(client);
+              })
+              .subscribe();
+
+            return () => {
+              client.removeChannel(channel);
+            };
+          } catch (err) {
+            console.error("Error al iniciar cliente Supabase:", err);
+          }
+        } else {
+          setSupabaseClient(null);
+        }
+      }, [modoSupabase, supabaseUrl, supabaseAnonKey]);
+
+      useEffect(() => {
+        localStorage.setItem('inst_eventos', JSON.stringify(eventos));
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ type: 'SYNC_EVENTOS', payload: eventos });
+        }
+      }, [eventos]);
+
+      useEffect(() => {
+        localStorage.setItem('inst_categorias', JSON.stringify(categoriasMap));
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ type: 'SYNC_CATEGORIAS', payload: categoriasMap });
+        }
+      }, [categoriasMap]);
+
+      useEffect(() => {
+        localStorage.setItem('inst_notas', notasRapidas);
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ type: 'SYNC_NOTAS', payload: notasRapidas });
+        }
+      }, [notasRapidas]);
+
+      const guardarNotasEnNube = async (nuevoTexto) => {
+        setNotasRapidas(nuevoTexto);
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('notas').upsert({
+              id: 'global_note',
+              contenido: nuevoTexto,
+              actualizado_en: new Date().toISOString()
+            });
+          } catch (err) {
+            console.error("Error sincronizando notas:", err);
+          }
+        }
+      };
+
+      const guardarCredencialesSupabase = (e) => {
+        e.preventDefault();
+        localStorage.setItem('sp_url', supabaseUrl.trim());
+        localStorage.setItem('sp_key', supabaseAnonKey.trim());
+        localStorage.setItem('sp_enabled', 'true');
+        setModoSupabase(true);
+        setModalConfigAbierto(false);
+        mostrarNotificacion("Credenciales guardadas con éxito.");
+      };
+
+      const desactivarSupabase = () => {
+        localStorage.setItem('sp_enabled', 'false');
+        setModoSupabase(false);
+        setSupabaseClient(null);
+        mostrarNotificacion("Cambiado a Modo Local.");
+      };
+
+      const handleGuardarEvento = async (datosEvento, nuevaCategoriaObj = null) => {
+        let catIdFinal = datosEvento.categoria;
+
+        if (nuevaCategoriaObj) {
+          const newId = 'cat-' + Date.now();
+          const nuevaCat = { id: newId, nombre: nuevaCategoriaObj.nombre, hex: nuevaCategoriaObj.hex };
+          setCategoriasMap(prev => ({ ...prev, [newId]: nuevaCat }));
+          catIdFinal = newId;
+
+          if (supabaseClient) {
+            try {
+              await supabaseClient.from('categorias').upsert({
+                id: newId,
+                nombre: nuevaCat.nombre,
+                hex: nuevaCat.hex
+              });
+            } catch (e) {
+              console.error("Error guardando categoría", e);
+            }
+          }
+        }
+
+        const evId = datosEvento.id || 'ev-' + Date.now();
+        const eventoAlineado = {
+          ...datosEvento,
+          id: evId,
+          categoria: catIdFinal
+        };
+
+        if (datosEvento.id) {
+          setEventos(prev => prev.map(ev => ev.id === datosEvento.id ? eventoAlineado : ev));
+          mostrarNotificacion("Evento actualizado.");
+        } else {
+          setEventos(prev => [eventoAlineado, ...prev]);
+          mostrarNotificacion("Evento creado con éxito.");
+        }
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('eventos').upsert({
+              id: evId,
+              titulo: eventoAlineado.titulo,
+              fecha: eventoAlineado.fecha,
+              hora_inicio: eventoAlineado.horaInicio || '',
+              hora_fin: eventoAlineado.horaFin || '',
+              jornada_completa: eventoAlineado.jornadaCompleta,
+              categoria: eventoAlineado.categoria,
+              ubicacion: eventoAlineado.ubicacion || '',
+              descripcion: eventoAlineado.descripcion || '',
+              importante: eventoAlineado.importante
+            });
+          } catch (err) {
+            console.error("Error enviando a Supabase:", err);
+          }
+        }
+
+        setModalNuevoAbierto(false);
+        setEventoEditar(null);
+      };
+
+      const handleEliminarEvento = async () => {
+        if (!eventoAEliminar) return;
+        const targetId = eventoAEliminar.id;
+        setEventos(prev => prev.filter(ev => ev.id !== targetId));
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('eventos').delete().eq('id', targetId);
+          } catch (err) {
+            console.error("Error eliminando en Supabase:", err);
+          }
+        }
+
+        setEventoAEliminar(null);
+        setEventoSeleccionado(null);
+        mostrarNotificacion("Evento eliminado.");
+      };
+
+      const mesAnterior = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+      const mesSiguiente = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+      const irAHoy = () => setCurrentDate(new Date());
+
+      const diasCalendario = useMemo(() => {
+        const año = currentDate.getFullYear();
+        const mes = currentDate.getMonth();
+
+        const primerDiaMes = new Date(año, mes, 1);
+        const ultimoDiaMes = new Date(año, mes + 1, 0);
+
+        let diaSemanaInicio = primerDiaMes.getDay() - 1;
+        if (diaSemanaInicio === -1) diaSemanaInicio = 6;
+
+        const dias = [];
+        const diaUltimoMesAnterior = new Date(año, mes, 0).getDate();
+
+        for (let i = diaSemanaInicio - 1; i >= 0; i--) {
+          dias.push({ fecha: new Date(año, mes - 1, diaUltimoMesAnterior - i), esMesActual: false });
+        }
+
+        for (let i = 1; i <= ultimoDiaMes.getDate(); i++) {
+          dias.push({ fecha: new Date(año, mes, i), esMesActual: true });
+        }
+
+        const totalCeldas = dias.length > 35 ? 42 : 35;
+        const diasRestantes = totalCeldas - dias.length;
+        for (let i = 1; i <= diasRestantes; i++) {
+          dias.push({ fecha: new Date(año, mes + 1, i), esMesActual: false });
+        }
+
+        return dias;
+      }, [currentDate]);
+
+      const eventosFiltrados = useMemo(() => {
+        return eventos.filter(ev => {
+          const coincideTexto = ev.titulo.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+                                (ev.descripcion && ev.descripcion.toLowerCase().includes(filtroTexto.toLowerCase()));
+          const coincideCategoria = filtroCategoria === 'todos' || ev.categoria === filtroCategoria;
+          const coincideImportancia = filtroImportancia === 'todos' ||
+                                      (filtroImportancia === 'alta' && ev.importante) ||
+                                      (filtroImportancia === 'normal' && !ev.importante);
+
+          return coincideTexto && coincideCategoria && coincideImportancia;
+        });
+      }, [eventos, filtroTexto, filtroCategoria, filtroImportancia]);
+
+      const eventosImportantes = useMemo(() => {
+        return eventos.filter(ev => ev.importante).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+      }, [eventos]);
+
+      const proximosEventos = useMemo(() => {
+        const hoyStr = formatDateKey(new Date());
+        return eventos
+          .filter(ev => ev.fecha >= hoyStr)
+          .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+          .slice(0, 5);
+      }, [eventos]);
+
+      const exportarEventosCSV = () => {
+        const headers = ["ID", "Titulo", "Fecha", "Hora Inicio", "Hora Fin", "Categoria", "Ubicacion", "Importante", "Descripcion"];
+        const rows = eventos.map(ev => [
+          ev.id,
+          `"${ev.titulo.replace(/"/g, '""')}"`,
+          ev.fecha,
+          ev.horaInicio || '',
+          ev.horaFin || '',
+          categoriasMap[ev.categoria]?.nombre || ev.categoria,
+          `"${(ev.ubicacion || '').replace(/"/g, '""')}"`,
+          ev.importante ? "SI" : "NO",
+          `"${(ev.descripcion || '').replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `calendario_institucional_${formatDateKey(new Date())}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        mostrarNotificacion("Eventos exportados a CSV.");
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col relative pb-10">
+
+          {notificacion && (
+            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-xl border text-sm font-semibold flex items-center gap-2 animate-bounce ${
+              notificacion.tipo === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              <Icon name={notificacion.tipo === 'error' ? 'alertTriangle' : 'check'} className="w-5 h-5" />
+              <span>{notificacion.texto}</span>
+            </div>
+          )}
+
+          <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-brand-600 text-white rounded-xl shadow-md flex items-center justify-center">
+                  <Icon name="school" className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">Gestión Educativa</span>
+                    {modoSupabase ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                        <Icon name="wifi" className="w-3 h-3" /> 🟢 Tiempo Real Activo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                        
+                      </span>
+                    )}
+                  </div>
+                  <h1 className="text-xl font-bold text-slate-900 leading-tight">Calendario Institucional</h1>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {modoSupabase && (
+                  <button
+                    onClick={() => cargarDatosSupabase(supabaseClient)}
+                    disabled={cargandoNube}
+                    className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition"
+                    title="Actualizar datos"
+                  >
+                    <Icon name="refresh" className={`w-4 h-4 ${cargandoNube ? 'animate-spin text-brand-600' : ''}`} />
+                  </button>
+                )}
+
+                <button 
+                  onClick={exportarEventosCSV}
+                  className="px-3 py-1.5 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center gap-1.5 transition"
+                >
+                  <Icon name="download" className="w-4 h-4 text-slate-500" />
+                  <span className="hidden sm:inline">Exportar CSV</span>
+                </button>
+
+                <button 
+                  onClick={() => setModalConfigAbierto(true)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border ${
+                    modoSupabase 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100' 
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon name="database" className="w-4 h-4" />
+                  <span>{modoSupabase ? 'Supabase Nube' : 'Configurar Sincronización'}</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-3">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="relative w-full md:w-64">
+                <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Buscar evento..."
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <select 
+                  value={filtroCategoria}
+                  onChange={(e) => setFiltroCategoria(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="todos">Todas las Categorías</option>
+                  {Object.keys(categoriasMap).map(key => (
+                    <option key={key} value={key}>{categoriasMap[key].nombre}</option>
+                  ))}
+                </select>
+
+                <select 
+                  value={filtroImportancia}
+                  onChange={(e) => setFiltroImportancia(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="todos">Toda Prioridad</option>
+                  <option value="alta">🚨 Altas / Claves</option>
+                  <option value="normal">Normales</option>
+                </select>
+
+                <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-slate-50 p-1">
+                  <button
+                    onClick={() => setVistaModo('mes')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${vistaModo === 'mes' ? 'bg-white shadow-xs text-brand-600' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Mes
+                  </button>
+                  <button
+                    onClick={() => setVistaModo('lista')}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${vistaModo === 'lista' ? 'bg-white shadow-xs text-brand-600' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    Agenda
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setModalColoresAbierto(true)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Icon name="palette" className="w-4 h-4 text-brand-600" />
+                  <span>Categorías</span>
+                </button>
+
+                <button 
+                  onClick={() => { setEventoEditar(null); setModalNuevoAbierto(true); }}
+                  className="ml-auto bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-sm transition"
+                >
+                  <Icon name="plus" className="w-4 h-4" />
+                  <span>Nuevo Evento</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <div className="lg:col-span-3 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-800">
+                  {MESES[currentDate.getMonth()]} <span className="text-slate-400 font-normal">{currentDate.getFullYear()}</span>
+                </h2>
+
+                <div className="flex items-center space-x-2">
+                  <button 
+                    onClick={irAHoy}
+                    className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
+                  >
+                    Hoy
+                  </button>
+                  <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+                    <button onClick={mesAnterior} className="p-1.5 hover:bg-slate-50 text-slate-600 border-r border-slate-200 transition">
+                      <Icon name="chevronLeft" className="w-5 h-5" />
+                    </button>
+                    <button onClick={mesSiguiente} className="p-1.5 hover:bg-slate-50 text-slate-600 transition">
+                      <Icon name="chevronRight" className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {vistaModo === 'mes' ? (
+                <div className="flex-1 p-3 sm:p-4">
+                  <div className="grid grid-cols-7 mb-2 text-center">
+                    {DIAS_SEMANA.map((dia, idx) => (
+                      <div key={idx} className="py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        {dia}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1.5 auto-rows-fr">
+                    {diasCalendario.map((item, index) => {
+                      const strFecha = formatDateKey(item.fecha);
+                      const hoyStr = formatDateKey(new Date());
+                      const esHoy = hoyStr === strFecha;
+                      const eventosDia = eventosFiltrados.filter(ev => ev.fecha === strFecha);
+
+                      return (
+                        <div 
+                          key={index} 
+                          onClick={(e) => {
+                            if (e.target.tagName !== 'BUTTON' && !e.target.closest('button') && item.esMesActual) {
+                              setEventoEditar({ fecha: strFecha });
+                              setModalNuevoAbierto(true);
+                            }
+                          }}
+                          className={`min-h-[100px] p-2 border rounded-xl flex flex-col justify-between transition cursor-pointer relative ${
+                            !item.esMesActual 
+                              ? 'bg-slate-50/50 border-slate-100 text-slate-300 opacity-60' 
+                              : esHoy 
+                                ? 'bg-brand-50/70 border-brand-300 text-slate-900 ring-2 ring-brand-500/20' 
+                                : 'bg-white border-slate-100 text-slate-700 hover:border-brand-200 hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
+                              esHoy ? 'bg-brand-600 text-white shadow-xs' : ''
+                            }`}>
+                              {item.fecha.getDate()}
+                            </span>
+
+                            {item.esMesActual && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEventoEditar({ fecha: strFecha });
+                                  setModalNuevoAbierto(true);
+                                }}
+                                className="text-slate-300 hover:text-brand-600 transition p-0.5"
+                              >
+                                <Icon name="plus" className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="mt-1 space-y-1 overflow-y-auto max-h-[72px]">
+                            {eventosDia.map(ev => {
+                              const cat = categoriasMap[ev.categoria] || CATEGORIAS_DEFAULT.otro;
+                              return (
+                                <button
+                                  key={ev.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEventoSeleccionado(ev);
+                                  }}
+                                  style={{
+                                    backgroundColor: `${cat.hex}1a`,
+                                    color: cat.hex,
+                                    borderColor: `${cat.hex}40`
+                                  }}
+                                  className={`w-full text-left px-1.5 py-0.5 rounded border text-[11px] font-semibold truncate transition hover:opacity-80 flex items-center gap-1 ${
+                                    ev.importante ? 'ring-1 ring-red-400 font-bold' : ''
+                                  }`}
+                                >
+                                  {ev.importante && <span>🚨</span>}
+                                  <span className="truncate">{ev.titulo}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 sm:p-6 divide-y divide-slate-100">
+                  {eventosFiltrados.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <Icon name="calendar" className="w-12 h-12 mx-auto mb-3 stroke-1 text-slate-300" />
+                      <p className="font-semibold text-sm">No se encontraron eventos institucionales.</p>
+                    </div>
+                  ) : (
+                    eventosFiltrados.map(ev => {
+                      const cat = categoriasMap[ev.categoria] || CATEGORIAS_DEFAULT.otro;
+                      return (
+                        <div 
+                          key={ev.id}
+                          onClick={() => setEventoSeleccionado(ev)}
+                          className="py-3.5 flex items-center justify-between hover:bg-slate-50 px-3 rounded-xl transition cursor-pointer"
+                        >
+                          <div className="flex items-center space-x-3.5">
+                            <div className="w-3 h-10 rounded-full shrink-0" style={{ backgroundColor: cat.hex }}></div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span 
+                                  style={{ backgroundColor: `${cat.hex}1a`, color: cat.hex, borderColor: `${cat.hex}40` }}
+                                  className="px-2 py-0.5 rounded text-[10px] font-bold border"
+                                >
+                                  {cat.nombre}
+                                </span>
+                                {ev.importante && (
+                                  <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full">
+                                    🚨 PRIORITARIO
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-bold text-slate-800 text-sm">{ev.titulo}</h3>
+                              {ev.descripcion && <p className="text-xs text-slate-500 line-clamp-1">{ev.descripcion}</p>}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-bold text-slate-700 block">{ev.fecha}</span>
+                            <span className="text-[11px] text-slate-400">
+                              {ev.jornadaCompleta ? 'Jornada Completa' : `${ev.horaInicio || ''} ${ev.horaFin ? `- ${ev.horaFin}` : ''}`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center space-x-2 mb-3 pb-2 border-b border-slate-100">
+                  <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                    <Icon name="alertTriangle" className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-sm">Fechas Destacadas</h3>
+                </div>
+
+                {eventosImportantes.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-2">No hay fechas prioritarias registradas.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {eventosImportantes.map(ev => (
+                      <div 
+                        key={ev.id} 
+                        onClick={() => setEventoSeleccionado(ev)}
+                        className="p-3 bg-red-50/50 border border-red-100 hover:border-red-200 rounded-xl cursor-pointer transition"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                            🚨 Clave
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-semibold">{ev.fecha}</span>
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-800">{ev.titulo}</h4>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center space-x-2 mb-3 pb-2 border-b border-slate-100">
+                  <div className="p-1.5 bg-brand-100 text-brand-600 rounded-lg">
+                    <Icon name="clock" className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-sm">Próximos Eventos</h3>
+                </div>
+
+                {proximosEventos.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-2">No hay eventos agendados a futuro.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {proximosEventos.map(ev => {
+                      const cat = categoriasMap[ev.categoria] || CATEGORIAS_DEFAULT.otro;
+                      return (
+                        <div 
+                          key={ev.id}
+                          onClick={() => setEventoSeleccionado(ev)}
+                          className="flex items-center space-x-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition border border-transparent hover:border-slate-200"
+                        >
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.hex }}></div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-xs font-bold text-slate-800 truncate">{ev.titulo}</h4>
+                            <p className="text-[10px] text-slate-500">{ev.fecha} {ev.horaInicio && `• ${ev.horaInicio} hs`}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                      <Icon name="stickyNote" className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-bold text-slate-800 text-sm">Notas Compartidas</h3>
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                    <Icon name="check" className="w-3 h-3" /> Nube Sincronizada
+                  </span>
+                </div>
+                <textarea
+                  value={notasRapidas}
+                  onChange={(e) => guardarNotasEnNube(e.target.value)}
+                  placeholder="Apuntes compartidos..."
+                  className="w-full h-32 resize-none text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 focus:bg-white transition"
+                ></textarea>
+              </div>
+
+            </div>
+          </main>
+
+          {/* MODAL DETALLES EVENTO */}
+          {eventoSeleccionado && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <div className="flex items-center space-x-2">
+                    {eventoSeleccionado.importante && <span className="text-sm">🚨</span>}
+                    <h3 className="text-base font-bold text-slate-800">{eventoSeleccionado.titulo}</h3>
+                  </div>
+                  <button onClick={() => setEventoSeleccionado(null)} className="text-slate-400 hover:text-slate-600">
+                    <Icon name="x" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <span className="font-bold text-slate-500">Fecha:</span>
+                    <span className="font-semibold text-slate-800">{eventoSeleccionado.fecha}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <span className="font-bold text-slate-500">Horario:</span>
+                    <span className="font-semibold text-slate-800">
+                      {eventoSeleccionado.jornadaCompleta ? 'Jornada Completa' : `${eventoSeleccionado.horaInicio || '--:--'} a ${eventoSeleccionado.horaFin || '--:--'}`}
+                    </span>
+                  </div>
+
+                  {eventoSeleccionado.ubicacion && (
+                    <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      <span className="font-bold text-slate-500">Ubicación:</span>
+                      <span className="font-semibold text-slate-800">{eventoSeleccionado.ubicacion}</span>
+                    </div>
+                  )}
+
+                  {eventoSeleccionado.descripcion && (
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <span className="font-bold text-slate-500 block mb-1">Descripción:</span>
+                      <p className="text-slate-700 whitespace-pre-line">{eventoSeleccionado.descripcion}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      const ev = eventoSeleccionado;
+                      setEventoSeleccionado(null);
+                      setEventoAEliminar(ev);
+                    }}
+                    className="px-3 py-2 text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition flex items-center gap-1.5"
+                  >
+                    <Icon name="trash" className="w-4 h-4" />
+                    <span>Eliminar</span>
+                  </button>
+
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        const ev = eventoSeleccionado;
+                        setEventoSeleccionado(null);
+                        setEventoEditar(ev);
+                        setModalNuevoAbierto(true);
+                      }}
+                      className="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition flex items-center gap-1.5"
+                    >
+                      <Icon name="edit" className="w-4 h-4" />
+                      <span>Editar</span>
+                    </button>
+                    <button
+                      onClick={() => setEventoSeleccionado(null)}
+                      className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL CONFIGURACIÓN SUPABASE */}
+          {modalConfigAbierto && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <div className="flex items-center space-x-2">
+                    <Icon name="database" className="w-5 h-5 text-brand-600" />
+                    <h3 className="text-base font-bold text-slate-800">Sincronización en Red Supabase</h3>
+                  </div>
+                  <button onClick={() => setModalConfigAbierto(false)} className="text-slate-400 hover:text-slate-600">
+                    <Icon name="x" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-500 mb-4">
+                  Conectá tu base de datos gratuita de Supabase para ver y editar los eventos en tiempo real desde múltiples computadoras.
+                </p>
+
+                <form onSubmit={guardarCredencialesSupabase} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Project URL</label>
+                    <input 
+                      type="url"
+                      required
+                      placeholder="https://xyz.supabase.co"
+                      value={supabaseUrl}
+                      onChange={(e) => setSupabaseUrl(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Anon / Public Key</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                      value={supabaseAnonKey}
+                      onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setModalSqlAbierto(true)}
+                      className="text-xs text-brand-600 font-bold hover:underline flex items-center gap-1"
+                    >
+                      <Icon name="code" className="w-4 h-4" />
+                      <span>Ver Código SQL</span>
+                    </button>
+
+                    <div className="flex space-x-2">
+                      {modoSupabase && (
+                        <button 
+                          type="button" 
+                          onClick={desactivarSupabase}
+                          className="px-3 py-2 text-xs text-red-600 font-semibold hover:bg-red-50 rounded-xl transition"
+                        >
+                          Desactivar
+                        </button>
+                      )}
+                      <button 
+                        type="submit" 
+                        className="px-4 py-2 text-xs font-bold bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition"
+                      >
+                        Conectar Nube
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL CÓDIGO SQL */}
+          {modalSqlAbierto && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <div className="flex items-center space-x-2">
+                    <Icon name="code" className="w-5 h-5 text-brand-600" />
+                    <h3 className="text-base font-bold text-slate-800">SQL para Supabase</h3>
+                  </div>
+                  <button onClick={() => setModalSqlAbierto(false)} className="text-slate-400 hover:text-slate-600">
+                    <Icon name="x" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-600 mb-3">
+                  Ejecutá este script en el <strong>SQL Editor</strong> de tu proyecto Supabase:
+                </p>
+
+                <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-[11px] font-mono overflow-x-auto overflow-y-auto max-h-60 mb-4">
+{`create table if not exists public.eventos (
+  id text primary key,
+  titulo text not null,
+  fecha text not null,
+  hora_inicio text,
+  hora_fin text,
+  jornada_completa boolean default false,
+  categoria text default 'otro',
+  ubicacion text,
+  descripcion text,
+  importante boolean default false
+);
+
+create table if not exists public.categorias (
+  id text primary key,
+  nombre text not null,
+  hex text not null
+);
+
+create table if not exists public.notas (
+  id text primary key,
+  contenido text,
+  actualizado_en text
+);
+
+alter table public.eventos enable row level security;
+alter table public.categorias enable row level security;
+alter table public.notas enable row level security;
+
+create policy "Permitir Todo Eventos" on public.eventos for all using (true) with check (true);
+create policy "Permitir Todo Categorias" on public.categorias for all using (true) with check (true);
+create policy "Permitir Todo Notas" on public.notas for all using (true) with check (true);
+
+alter publication supabase_realtime add table public.eventos;
+alter publication supabase_realtime add table public.categorias;
+alter publication supabase_realtime add table public.notas;`}
+                </pre>
+
+                <div className="mt-auto flex items-center justify-end">
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`create table if not exists public.eventos (\n  id text primary key,\n  titulo text not null,\n  fecha text not null,\n  hora_inicio text,\n  hora_fin text,\n  jornada_completa boolean default false,\n  categoria text default 'otro',\n  ubicacion text,\n  descripcion text,\n  importante boolean default false\n);\n\ncreate table if not exists public.categorias (\n  id text primary key,\n  nombre text not null,\n  hex text not null\n);\n\ncreate table if not exists public.notas (\n  id text primary key,\n  contenido text,\n  actualizado_en text\n);\n\nalter table public.eventos enable row level security;\nalter table public.categorias enable row level security;\nalter table public.notas enable row level security;\n\ncreate policy "Permitir Todo Eventos" on public.eventos for all using (true) with check (true);\ncreate policy "Permitir Todo Categorias" on public.categorias for all using (true) with check (true);\ncreate policy "Permitir Todo Notas" on public.notas for all using (true) with check (true);\n\nalter publication supabase_realtime add table public.eventos;\nalter publication supabase_realtime add table public.categorias;\nalter publication supabase_realtime add table public.notas;`);
+                      mostrarNotificacion("Código SQL copiado.");
+                    }}
+                    className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition"
+                  >
+                    Copiar SQL
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL CONFIRMACIÓN ELIMINACIÓN */}
+          {eventoAEliminar && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-60 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+                <div className="flex items-center space-x-3 text-red-600 mb-3">
+                  <div className="p-2.5 bg-red-100 rounded-full">
+                    <Icon name="alertTriangle" className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-800">¿Eliminar Evento?</h3>
+                </div>
+
+                <p className="text-xs text-slate-600 mb-4">
+                  Estás a punto de eliminar <strong>"{eventoAEliminar.titulo}"</strong>.
+                </p>
+
+                <div className="flex items-center justify-end space-x-2">
+                  <button 
+                    onClick={() => setEventoAEliminar(null)}
+                    className="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={handleEliminarEvento}
+                    className="px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl transition"
+                  >
+                    Sí, Eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL NUEVO / EDITAR EVENTO */}
+          {modalNuevoAbierto && (
+            <FormularioEvento 
+              eventoInicial={eventoEditar} 
+              categoriasMap={categoriasMap}
+              onGuardar={handleGuardarEvento} 
+              onCerrar={() => { setModalNuevoAbierto(false); setEventoEditar(null); }} 
+            />
+          )}
+
+          {/* MODAL GESTIÓN DE COLORES */}
+          {modalColoresAbierto && (
+            <ModalGestionColores
+              categoriasMap={categoriasMap}
+              setCategoriasMap={setCategoriasMap}
+              supabaseClient={supabaseClient}
+              mostrarNotificacion={mostrarNotificacion}
+              onCerrar={() => setModalColoresAbierto(false)}
+            />
+          )}
+
+          <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
+            <p>© 2026 Calendario Institucional Educativo • Sincronizado, administradora Arevalo Nicole </p>
+          </footer>
+        </div>
+      );
+    }
+
+    function FormularioEvento({ eventoInicial, categoriasMap, onGuardar, onCerrar }) {
+      const primerCategoriaId = Object.keys(categoriasMap)[0] || 'jornada';
+
+      const [titulo, setTitulo] = useState(eventoInicial?.titulo || '');
+      const [fecha, setFecha] = useState(eventoInicial?.fecha || formatDateKey(new Date()));
+      const [horaInicio, setHoraInicio] = useState(eventoInicial?.horaInicio || '08:00');
+      const [horaFin, setHoraFin] = useState(eventoInicial?.horaFin || '12:00');
+      const [jornadaCompleta, setJornadaCompleta] = useState(eventoInicial?.jornadaCompleta || false);
+      const [categoria, setCategoria] = useState(eventoInicial?.categoria || primerCategoriaId);
+      
+      const [actividadPersonalizada, setActividadPersonalizada] = useState('');
+      const [colorPersonalizado, setColorPersonalizado] = useState('#2563eb');
+
+      const [ubicacion, setUbicacion] = useState(eventoInicial?.ubicacion || '');
+      const [descripcion, setDescripcion] = useState(eventoInicial?.descripcion || '');
+      const [importante, setImportante] = useState(eventoInicial?.importante || false);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!titulo.trim()) return;
+
+        let nuevaCatObj = null;
+        if (categoria === 'NUEVA_CATEGORIA') {
+          if (!actividadPersonalizada.trim()) return;
+          nuevaCatObj = {
+            nombre: actividadPersonalizada.trim(),
+            hex: colorPersonalizado
+          };
+        }
+
+        const datos = {
+          id: eventoInicial?.id || null,
+          titulo: titulo.trim(),
+          fecha,
+          horaInicio: jornadaCompleta ? '' : horaInicio,
+          horaFin: jornadaCompleta ? '' : horaFin,
+          jornadaCompleta,
+          categoria,
+          ubicacion: ubicacion.trim(),
+          descripcion: descripcion.trim(),
+          importante
+        };
+
+        onGuardar(datos, nuevaCatObj);
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-800">
+                {eventoInicial?.id ? 'Editar Evento' : 'Nuevo Evento'}
+              </h3>
+              <button onClick={onCerrar} className="text-slate-400 hover:text-slate-600 p-1">
+                <Icon name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Título del Evento *</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Ej. Jornada Institucional"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Categoría *</label>
+                <select 
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                >
+                  {Object.keys(categoriasMap).map(key => (
+                    <option key={key} value={key}>{categoriasMap[key].nombre}</option>
+                  ))}
+                  <option value="NUEVA_CATEGORIA">+ Crear nueva categoría...</option>
+                </select>
+              </div>
+
+              {categoria === 'NUEVA_CATEGORIA' && (
+                <div className="p-3 bg-brand-50/60 border border-brand-200 rounded-xl space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-brand-900 mb-1">Nombre de Nueva Categoría</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ej. Proyecto de Lectura"
+                      value={actividadPersonalizada}
+                      onChange={(e) => setActividadPersonalizada(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-brand-300 rounded-lg text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-brand-900 mb-1">Color</label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="color"
+                        value={colorPersonalizado}
+                        onChange={(e) => setColorPersonalizado(e.target.value)}
+                        className="w-8 h-8 rounded border cursor-pointer p-0.5 bg-white"
+                      />
+                      <span className="text-xs font-mono font-semibold text-slate-600">{colorPersonalizado}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Fecha *</label>
+                <input 
+                  type="date" 
+                  required
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input 
+                  type="checkbox" 
+                  id="jornadaCompleta"
+                  checked={jornadaCompleta}
+                  onChange={(e) => setJornadaCompleta(e.target.checked)}
+                  className="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500"
+                />
+                <label htmlFor="jornadaCompleta" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                  Jornada Completa (Sin horario específico)
+                </label>
+              </div>
+
+              {!jornadaCompleta && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Hora Inicio</label>
+                    <input 
+                      type="time" 
+                      value={horaInicio}
+                      onChange={(e) => setHoraInicio(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Hora Fin</label>
+                    <input 
+                      type="time" 
+                      value={horaFin}
+                      onChange={(e) => setHoraFin(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Ubicación (Opcional)</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej. SUM, Laboratorio"
+                  value={ubicacion}
+                  onChange={(e) => setUbicacion(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descripción</label>
+                <textarea 
+                  rows="3"
+                  placeholder="Detalles adicionales..."
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-brand-500 focus:outline-none"
+                ></textarea>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input 
+                  type="checkbox" 
+                  id="importante"
+                  checked={importante}
+                  onChange={(e) => setImportante(e.target.checked)}
+                  className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                />
+                <label htmlFor="importante" className="text-xs font-bold text-red-600 cursor-pointer flex items-center gap-1">
+                  <span>🚨 Marcar como Evento Prioritario / Clave</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button 
+                  type="button"
+                  onClick={onCerrar}
+                  className="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition shadow-sm"
+                >
+                  {eventoInicial?.id ? 'Guardar Cambios' : 'Crear Evento'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    function ModalGestionColores({ categoriasMap, setCategoriasMap, supabaseClient, mostrarNotificacion, onCerrar }) {
+      const [nombre, setNombre] = useState('');
+      const [color, setColor] = useState('#2563eb');
+      const [idEditando, setIdEditando] = useState(null);
+      const [nombreEdit, setNombreEdit] = useState('');
+      const [colorEdit, setColorEdit] = useState('#2563eb');
+
+      const handleCrearCategoria = async (e) => {
+        e.preventDefault();
+        const nomLimpio = nombre.trim();
+        if (!nomLimpio) return;
+
+        const newId = 'cat-' + Date.now();
+        const nuevaCat = { id: newId, nombre: nomLimpio, hex: color };
+
+        setCategoriasMap(prev => ({ ...prev, [newId]: nuevaCat }));
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('categorias').upsert({ id: newId, nombre: nomLimpio, hex: color });
+          } catch (err) {
+            console.error("Error guardando categoría:", err);
+          }
+        }
+
+        setNombre('');
+        setColor('#2563eb');
+        mostrarNotificacion("Categoría creada.");
+      };
+
+      const handleGuardarEdicion = async (id) => {
+        const nomLimpio = nombreEdit.trim();
+        if (!nomLimpio) return;
+
+        setCategoriasMap(prev => ({
+          ...prev,
+          [id]: { ...prev[id], nombre: nomLimpio, hex: colorEdit }
+        }));
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('categorias').upsert({ id, nombre: nomLimpio, hex: colorEdit });
+          } catch (err) {
+            console.error("Error actualizando categoría:", err);
+          }
+        }
+
+        setIdEditando(null);
+        mostrarNotificacion("Categoría actualizada.");
+      };
+
+      const handleEliminarCategoria = async (id) => {
+        setCategoriasMap(prev => {
+          const copia = { ...prev };
+          delete copia[id];
+          return copia;
+        });
+
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from('categorias').delete().eq('id', id);
+          } catch (err) {
+            console.error("Error eliminando categoría:", err);
+          }
+        }
+
+        mostrarNotificacion("Categoría eliminada.");
+      };
+
+      return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 shrink-0">
+              <div className="flex items-center space-x-2">
+                <Icon name="palette" className="w-5 h-5 text-brand-600" />
+                <h3 className="text-base font-bold text-slate-800">Administrar Categorías</h3>
+              </div>
+              <button onClick={onCerrar} className="text-slate-400 hover:text-slate-600">
+                <Icon name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearCategoria} className="p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 shrink-0 space-y-2">
+              <span className="text-xs font-bold text-slate-700 block">Nueva Categoría</span>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Nombre..."
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <input 
+                  type="color" 
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="w-8 h-8 border border-slate-300 rounded-lg cursor-pointer p-0.5 bg-white shrink-0"
+                />
+                <button 
+                  type="submit"
+                  className="bg-brand-600 hover:bg-brand-700 text-white font-bold py-1.5 px-3 rounded-lg text-xs transition"
+                >
+                  Agregar
+                </button>
+              </div>
+            </form>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {Object.values(categoriasMap).map(cat => {
+                const esEditando = idEditando === cat.id;
+
+                if (esEditando) {
+                  return (
+                    <div key={cat.id} className="p-2 bg-brand-50 border border-brand-300 rounded-xl flex items-center gap-2">
+                      <input 
+                        type="text"
+                        value={nombreEdit}
+                        onChange={(e) => setNombreEdit(e.target.value)}
+                        className="flex-1 px-2 py-1 bg-white border border-brand-300 rounded-lg text-xs"
+                      />
+                      <input 
+                        type="color"
+                        value={colorEdit}
+                        onChange={(e) => setColorEdit(e.target.value)}
+                        className="w-7 h-7 border border-slate-300 rounded-lg cursor-pointer p-0.5 bg-white"
+                      />
+                      <button 
+                        onClick={() => handleGuardarEdicion(cat.id)}
+                        className="px-2.5 py-1 bg-brand-600 text-white rounded-lg text-xs font-bold"
+                      >
+                        Guardar
+                      </button>
+                      <button 
+                        onClick={() => setIdEditando(null)}
+                        className="px-2 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-medium"
+                      >
+                        X
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={cat.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="flex items-center space-x-2.5">
+                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300" style={{ backgroundColor: cat.hex }}></span>
+                      <span className="text-xs font-bold text-slate-800">{cat.nombre}</span>
+                    </div>
+
+                    <div className="flex items-center space-x-1">
+                      <button 
+                        onClick={() => {
+                          setIdEditando(cat.id);
+                          setNombreEdit(cat.nombre);
+                          setColorEdit(cat.hex);
+                        }}
+                        className="p-1 text-slate-400 hover:text-brand-600 rounded-lg transition"
+                      >
+                        <Icon name="edit" className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleEliminarCategoria(cat.id)}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition"
+                      >
+                        <Icon name="trash" className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100 shrink-0">
+              <button 
+                onClick={onCerrar}
+                className="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
