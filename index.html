@@ -166,6 +166,18 @@
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
             <path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>
           </svg>
+        ),
+        share: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+        ),
+        calendarPlus: (
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>
+            <line x1="12" y1="14" x2="12" y2="18"></line><line x1="10" y1="16" x2="14" y2="16"></line>
+          </svg>
         )
       };
       return icons[name] || null;
@@ -176,6 +188,15 @@
       const m = String(dateObj.getMonth() + 1).padStart(2, '0');
       const d = String(dateObj.getDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
+    };
+
+    const parseLocalDate = (fechaStr) => {
+      if (!fechaStr) return new Date();
+      const parts = fechaStr.split('-');
+      if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      }
+      return new Date(fechaStr);
     };
 
     const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -238,7 +259,7 @@
       const [currentDate, setCurrentDate] = useState(new Date());
       const [vistaModo, setVistaModo] = useState('mes');
       
-      const [eventos, setEventos] = useState(EVENTOS_SEMILLA);
+      const [eventos, setEventos] = useState([]);
       const [categoriasMap, setCategoriasMap] = useState(CATEGORIAS_DEFAULT);
       const [notasRapidas, setNotasRapidas] = useState("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
 
@@ -254,10 +275,86 @@
       const [notificacion, setNotificacion] = useState(null);
 
       const firebaseRef = useRef(null);
+      const eventoUrlProcesado = useRef(false);
 
       const mostrarNotificacion = (texto, tipo = 'exito') => {
         setNotificacion({ texto, tipo });
         setTimeout(() => setNotificacion(null), 4000);
+      };
+
+      const compartirEvento = (evento) => {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('eventoId', evento.id);
+        const shareUrl = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => mostrarNotificacion("¡Enlace copiado al portapapeles!"))
+            .catch(() => mostrarNotificacion("No se pudo copiar el enlace", "error"));
+        } else {
+          const textArea = document.createElement("textarea");
+          textArea.value = shareUrl;
+          document.body.appendChild(textArea);
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            mostrarNotificacion("¡Enlace copiado al portapapeles!");
+          } catch (err) {
+            mostrarNotificacion("Error al copiar enlace", "error");
+          }
+          document.body.removeChild(textArea);
+        }
+      };
+
+      const exportarICS = (evento) => {
+        const formatICSDate = (fechaStr, horaStr) => {
+          const cleanDate = fechaStr.replace(/-/g, '');
+          if (!horaStr) return cleanDate;
+          const cleanTime = horaStr.replace(/:/g, '') + '00';
+          return `${cleanDate}T${cleanTime}`;
+        };
+
+        let dtStart = '';
+        let dtEnd = '';
+
+        if (evento.jornadaCompleta || !evento.horaInicio) {
+          dtStart = `;VALUE=DATE:${formatICSDate(evento.fecha)}`;
+          const dateObj = parseLocalDate(evento.fecha);
+          dateObj.setDate(dateObj.getDate() + 1);
+          dtEnd = `;VALUE=DATE:${formatDateKey(dateObj).replace(/-/g, '')}`;
+        } else {
+          dtStart = `:${formatICSDate(evento.fecha, evento.horaInicio)}`;
+          const horaFinFinal = evento.horaFin || evento.horaInicio;
+          dtEnd = `:${formatICSDate(evento.fecha, horaFinFinal)}`;
+        }
+
+        const escapeText = (str) => (str || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+        const icsData = [
+          'BEGIN:VCALENDAR',
+          'VERSION:2.0',
+          'PRODID:-//Calendario Institucional//ES',
+          'CALSCALE:GREGORIAN',
+          'BEGIN:VEVENT',
+          `UID:${evento.id}@calendario-institucional`,
+          `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+          `DTSTART${dtStart}`,
+          `DTEND${dtEnd}`,
+          `SUMMARY:${escapeText(evento.titulo)}`,
+          `DESCRIPTION:${escapeText(evento.descripcion)}`,
+          `LOCATION:${escapeText(evento.ubicacion)}`,
+          'END:VEVENT',
+          'END:VCALENDAR'
+        ].join('\r\n');
+
+        const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.setAttribute('download', `${evento.titulo.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.ics`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        mostrarNotificacion("Archivo .ics generado para tu calendario.");
       };
 
       useEffect(() => {
@@ -311,65 +408,96 @@
       useEffect(() => {
         if (!dbReady || !firebaseRef.current) return;
         const { db, appId } = firebaseRef.current;
-        const { collection, onSnapshot } = window.FirebaseSDK;
+        const { collection, doc, getDoc, setDoc, onSnapshot } = window.FirebaseSDK;
 
         setCargandoNube(true);
 
         const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
         const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
         const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
+        const docInitMeta = doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'initialization');
 
-        const unsubEventos = onSnapshot(colEventos, (snapshot) => {
-          if (!snapshot.empty) {
-            const list = [];
-            snapshot.forEach(docSnap => list.push({ id: docSnap.id, ...docSnap.data() }));
-            setEventos(list);
-          } else {
-            EVENTOS_SEMILLA.forEach(async (ev) => {
-              const { doc, setDoc } = window.FirebaseSDK;
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
-            });
+        const verifyAndSeedData = async () => {
+          try {
+            const initSnap = await getDoc(docInitMeta);
+            if (!initSnap.exists()) {
+              for (const ev of EVENTOS_SEMILLA) {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
+              }
+              for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
+              }
+              await setDoc(docInitMeta, { initialized: true, timestamp: new Date().toISOString() });
+            }
+          } catch (err) {
+            console.error("Error al verificar semilla:", err);
           }
-          setCargandoNube(false);
-        }, (err) => {
-          console.error("Error leyendo eventos:", err);
-          setCargandoNube(false);
-        });
+        };
 
-        const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
-          if (!snapshot.empty) {
+        verifyAndSeedData().then(() => {
+          const unsubEventos = onSnapshot(colEventos, (snapshot) => {
+            const list = [];
+            snapshot.forEach(docSnap => {
+              list.push({ id: docSnap.id, ...docSnap.data() });
+            });
+            setEventos(list);
+            setCargandoNube(false);
+
+            if (!eventoUrlProcesado.current) {
+              const params = new URLSearchParams(window.location.search);
+              let targetId = params.get('eventoId');
+              
+              if (!targetId && window.location.hash) {
+                const match = window.location.hash.match(/#\/evento\/(.+)/);
+                if (match) targetId = match[1];
+              }
+
+              if (targetId) {
+                const evEncontrado = list.find(e => e.id === targetId);
+                if (evEncontrado) {
+                  setEventoSeleccionado(evEncontrado);
+                  if (evEncontrado.fecha) {
+                    const parsedDate = parseLocalDate(evEncontrado.fecha);
+                    setCurrentDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
+                  }
+                }
+              }
+              eventoUrlProcesado.current = true;
+            }
+          }, (err) => {
+            console.error("Error leyendo eventos:", err);
+            setCargandoNube(false);
+          });
+
+          const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
             const catObj = {};
             snapshot.forEach(docSnap => {
               const d = docSnap.data();
               catObj[d.id || docSnap.id] = d;
             });
-            setCategoriasMap(catObj);
-          } else {
-            Object.values(CATEGORIAS_DEFAULT).forEach(async (cat) => {
-              const { doc, setDoc } = window.FirebaseSDK;
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', cat.id), cat);
-            });
-          }
-        }, (err) => console.error("Error leyendo categorías:", err));
+            if (Object.keys(catObj).length > 0) {
+              setCategoriasMap(catObj);
+            } else {
+              setCategoriasMap({});
+            }
+          }, (err) => console.error("Error leyendo categorías:", err));
 
-        const unsubNotas = onSnapshot(colNotas, (snapshot) => {
-          if (!snapshot.empty) {
-            snapshot.forEach(docSnap => {
-              if (docSnap.id === 'global_note') {
-                setNotasRapidas(docSnap.data().contenido || '');
-              }
-            });
-          } else {
-            const { doc, setDoc } = window.FirebaseSDK;
-            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'notas', 'global_note'), { contenido: notasRapidas });
-          }
-        }, (err) => console.error("Error leyendo notas:", err));
+          const unsubNotas = onSnapshot(colNotas, (snapshot) => {
+            if (!snapshot.empty) {
+              snapshot.forEach(docSnap => {
+                if (docSnap.id === 'global_note') {
+                  setNotasRapidas(docSnap.data().contenido || '');
+                }
+              });
+            }
+          }, (err) => console.error("Error leyendo notas:", err));
 
-        return () => {
-          unsubEventos();
-          unsubCategorias();
-          unsubNotas();
-        };
+          return () => {
+            unsubEventos();
+            unsubCategorias();
+            unsubNotas();
+          };
+        });
       }, [dbReady]);
 
       const guardarNotasEnNube = async (nuevoTexto) => {
@@ -415,13 +543,15 @@
           categoria: catIdFinal
         };
 
-        if (datosEvento.id) {
-          setEventos(prev => prev.map(ev => ev.id === datosEvento.id ? eventoAlineado : ev));
-          mostrarNotificacion("Evento actualizado.");
-        } else {
-          setEventos(prev => [eventoAlineado, ...prev]);
-          mostrarNotificacion("Evento creado con éxito.");
-        }
+        setEventos(prev => {
+          const existe = prev.some(e => e.id === evId);
+          if (existe) {
+            return prev.map(ev => ev.id === evId ? eventoAlineado : ev);
+          }
+          return [eventoAlineado, ...prev];
+        });
+
+        mostrarNotificacion(datosEvento.id ? "Evento actualizado." : "Evento creado con éxito.");
 
         if (firebaseRef.current && dbReady) {
           try {
@@ -441,7 +571,6 @@
         if (!eventoAEliminar) return;
         const targetId = eventoAEliminar.id;
         
-        // Actualización optimista local
         setEventos(prev => prev.filter(ev => ev.id !== targetId));
 
         if (firebaseRef.current && dbReady) {
@@ -508,14 +637,14 @@
       }, [eventos, filtroTexto, filtroCategoria, filtroImportancia]);
 
       const eventosImportantes = useMemo(() => {
-        return eventos.filter(ev => ev.importante).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        return eventos.filter(ev => ev.importante).sort((a, b) => a.fecha.localeCompare(b.fecha));
       }, [eventos]);
 
       const proximosEventos = useMemo(() => {
         const hoyStr = formatDateKey(new Date());
         return eventos
           .filter(ev => ev.fecha >= hoyStr)
-          .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+          .sort((a, b) => a.fecha.localeCompare(b.fecha))
           .slice(0, 5);
       }, [eventos]);
 
@@ -816,11 +945,23 @@
                             </div>
                           </div>
 
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-bold text-slate-700 block">{ev.fecha}</span>
-                            <span className="text-[11px] text-slate-400">
-                              {ev.jornadaCompleta ? 'Jornada Completa' : `${ev.horaInicio || ''} ${ev.horaFin ? `- ${ev.horaFin}` : ''}`}
-                            </span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <span className="text-xs font-bold text-slate-700 block">{ev.fecha}</span>
+                              <span className="text-[11px] text-slate-400">
+                                {ev.jornadaCompleta ? 'Jornada Completa' : `${ev.horaInicio || ''} ${ev.horaFin ? `- ${ev.horaFin}` : ''}`}
+                              </span>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                compartirEvento(ev);
+                              }}
+                              className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition"
+                              title="Compartir evento"
+                            >
+                              <Icon name="share" className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
                       );
@@ -917,7 +1058,6 @@
             </div>
           </main>
 
-          {/* MODAL DETALLES EVENTO */}
           {eventoSeleccionado && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
@@ -959,7 +1099,25 @@
                   )}
                 </div>
 
-                <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-100">
+                  <button
+                    onClick={() => compartirEvento(eventoSeleccionado)}
+                    className="w-full py-2 px-3 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-xl transition flex items-center justify-center gap-1.5 border border-brand-200"
+                  >
+                    <Icon name="share" className="w-4 h-4 text-brand-600" />
+                    <span>Compartir Enlace</span>
+                  </button>
+
+                  <button
+                    onClick={() => exportarICS(eventoSeleccionado)}
+                    className="w-full py-2 px-3 text-xs font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-xl transition flex items-center justify-center gap-1.5 border border-emerald-200"
+                  >
+                    <Icon name="calendarPlus" className="w-4 h-4 text-emerald-600" />
+                    <span>Exportar (.ics)</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100">
                   <button
                     onClick={() => {
                       const ev = eventoSeleccionado;
@@ -997,7 +1155,6 @@
             </div>
           )}
 
-          {/* MODAL CONFIRMACIÓN ELIMINACIÓN */}
           {eventoAEliminar && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-60 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
@@ -1030,9 +1187,9 @@
             </div>
           )}
 
-          {/* MODAL NUEVO / EDITAR EVENTO */}
           {modalNuevoAbierto && (
             <FormularioEvento 
+              key={eventoEditar?.id || eventoEditar?.fecha || 'nuevo-evento'}
               eventoInicial={eventoEditar} 
               categoriasMap={categoriasMap}
               onGuardar={handleGuardarEvento} 
@@ -1040,7 +1197,6 @@
             />
           )}
 
-          {/* MODAL GESTIÓN DE COLORES */}
           {modalColoresAbierto && (
             <ModalGestionColores
               categoriasMap={categoriasMap}
