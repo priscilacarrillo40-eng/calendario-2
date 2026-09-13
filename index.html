@@ -258,7 +258,7 @@
     function App() {
       const [dbReady, setDbReady] = useState(false);
       const [cargandoNube, setCargandoNube] = useState(true);
-      const [conexionEstado, setConexionEstado] = useState('conectando'); // 'conectado', 'error', 'conectando'
+      const [conexionEstado, setConexionEstado] = useState('conectando');
       const [ultimaSinc, setUltimaSinc] = useState('');
 
       const [currentDate, setCurrentDate] = useState(new Date());
@@ -391,12 +391,10 @@
               if (user) {
                 setDbReady(true);
 
-                // Mandated Firestore Collection Paths: /artifacts/{appId}/public/data/{collectionName}
                 const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
                 const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
                 const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
 
-                // Check if database is empty to seed initial sample data ONCE
                 try {
                   const snapEv = await getDocs(colEventos);
                   if (snapEv.empty) {
@@ -415,7 +413,6 @@
                   console.warn("Error al verificar semillas iniciales:", e);
                 }
 
-                // Real-time listener for EVENTS across ALL clients
                 const unsubEventos = onSnapshot(colEventos, (snapshot) => {
                   const list = [];
                   snapshot.forEach(docSnap => {
@@ -426,7 +423,6 @@
                   setConexionEstado('conectado');
                   setUltimaSinc(new Date().toLocaleTimeString());
 
-                  // URL parameter direct link handler
                   if (!eventoUrlProcesado.current && list.length > 0) {
                     const params = new URLSearchParams(window.location.search);
                     let targetId = params.get('eventoId');
@@ -452,7 +448,6 @@
                   setCargandoNube(false);
                 });
 
-                // Real-time listener for CATEGORIES
                 const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
                   const catObj = {};
                   snapshot.forEach(docSnap => {
@@ -462,15 +457,15 @@
                   setCategoriasMap(Object.keys(catObj).length > 0 ? catObj : CATEGORIAS_DEFAULT);
                 }, (err) => console.error("Error en Snapshot Categorías:", err));
 
-                // Real-time listener for SHARED PUBLIC NOTES
                 const unsubNotas = onSnapshot(colNotas, (snapshot) => {
-                  if (!snapshot.empty) {
-                    snapshot.forEach(docSnap => {
-                      if (docSnap.id === 'global_note') {
-                        setNotasRapidas(docSnap.data().contenido || '');
-                      }
-                    });
-                  } else {
+                  let foundNote = false;
+                  snapshot.forEach(docSnap => {
+                    if (docSnap.id === 'global_note') {
+                      setNotasRapidas(docSnap.data().contenido || '');
+                      foundNote = true;
+                    }
+                  });
+                  if (!foundNote && snapshot.empty) {
                     setNotasRapidas("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
                   }
                 }, (err) => console.error("Error en Snapshot Notas:", err));
@@ -1620,7 +1615,7 @@
             </div>
 
             <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100 shrink-0">
-              <button
+              <button 
                 onClick={onCerrar}
                 className="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
               >
