@@ -459,9 +459,7 @@
                     const d = docSnap.data();
                     catObj[d.id || docSnap.id] = d;
                   });
-                  if (Object.keys(catObj).length > 0) {
-                    setCategoriasMap(catObj);
-                  }
+                  setCategoriasMap(Object.keys(catObj).length > 0 ? catObj : CATEGORIAS_DEFAULT);
                 }, (err) => console.error("Error en Snapshot Categorías:", err));
 
                 // Real-time listener for SHARED PUBLIC NOTES
@@ -1354,7 +1352,14 @@
                   type="checkbox" 
                   id="jornadaCompleta"
                   checked={jornadaCompleta}
-                  onChange={(e) => setJornadaCompleta(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setJornadaCompleta(checked);
+                    if (!checked) {
+                      if (!horaInicio) setHoraInicio('08:00');
+                      if (!horaFin) setHoraFin('12:00');
+                    }
+                  }}
                   className="w-4 h-4 text-brand-600 rounded border-slate-300 focus:ring-brand-500"
                 />
                 <label htmlFor="jornadaCompleta" className="text-xs font-semibold text-slate-700 cursor-pointer">
@@ -1492,6 +1497,12 @@
       };
 
       const handleEliminarCategoria = async (id) => {
+        setCategoriasMap(prev => {
+          const copia = { ...prev };
+          delete copia[id];
+          return copia;
+        });
+
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
