@@ -258,7 +258,7 @@
     function App() {
       const [dbReady, setDbReady] = useState(false);
       const [cargandoNube, setCargandoNube] = useState(true);
-      const [conexionEstado, setConexionEstado] = useState('conectando');
+      const [conexionEstado, setConexionEstado] = useState('conectando'); // 'conectado', 'error', 'conectando'
       const [ultimaSinc, setUltimaSinc] = useState('');
 
       const [currentDate, setCurrentDate] = useState(new Date());
@@ -293,18 +293,30 @@
         const urlParams = new URLSearchParams(window.location.search);
         urlParams.set('eventoId', evento.id);
         const shareUrl = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
-        
-        const textArea = document.createElement("textarea");
-        textArea.value = shareUrl;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          mostrarNotificacion("¡Enlace único copiado al portapapeles!");
-        } catch (err) {
-          mostrarNotificacion("No se pudo copiar el enlace", "error");
+
+        const copiarConFallback = () => {
+          try {
+            const textArea = document.createElement("textarea");
+            textArea.value = shareUrl;
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            mostrarNotificacion("¡Enlace único copiado al portapapeles!");
+          } catch (err) {
+            mostrarNotificacion("No se pudo copiar el enlace", "error");
+          }
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => mostrarNotificacion("¡Enlace único copiado al portapapeles!"))
+            .catch(() => copiarConFallback());
+        } else {
+          copiarConFallback();
         }
-        document.body.removeChild(textArea);
       };
 
       const exportarICS = (evento) => {
@@ -359,8 +371,12 @@
       };
 
       useEffect(() => {
+        let activo = true;
+        const listenersListosRef = { current: false };
+        const authUnsubRef = { current: null };
+
         const initAndListen = async () => {
-          if (!window.FirebaseSDK) return;
+          if (!window.FirebaseSDK || !activo) return;
           const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, onSnapshot, setDoc, getDocs } = window.FirebaseSDK;
 
           try {
@@ -387,92 +403,105 @@
               await signInAnonymously(auth);
             }
 
-            onAuthStateChanged(auth, async (user) => {
-              if (user) {
-                setDbReady(true);
+            const unsubAuth = onAuthStateChanged(auth, async (user) => {
+              if (!user || !activo) return;
+              setDbReady(true);
 
-                const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
-                const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
-                const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
+              // Evita registrar listeners duplicados o re-sembrar datos si onAuthStateChanged
+              // llegara a dispararse más de una vez durante el ciclo de vida del componente.
+              if (listenersListosRef.current) return;
+              listenersListosRef.current = true;
 
-                try {
-                  const snapEv = await getDocs(colEventos);
-                  if (snapEv.empty) {
-                    for (const ev of EVENTOS_SEMILLA) {
-                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
-                    }
+              // Mandated Firestore Collection Paths: /artifacts/{appId}/public/data/{collectionName}
+              const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+              const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
+              const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
+
+              // Check if database is empty to seed initial sample data ONCE
+              try {
+                const snapEv = await getDocs(colEventos);
+                if (snapEv.empty) {
+                  for (const ev of EVENTOS_SEMILLA) {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
                   }
-
-                  const snapCat = await getDocs(colCategorias);
-                  if (snapCat.empty) {
-                    for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
-                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
-                    }
-                  }
-                } catch (e) {
-                  console.warn("Error al verificar semillas iniciales:", e);
                 }
 
-                const unsubEventos = onSnapshot(colEventos, (snapshot) => {
-                  const list = [];
-                  snapshot.forEach(docSnap => {
-                    list.push({ id: docSnap.id, ...docSnap.data() });
-                  });
-                  setEventos(list);
-                  setCargandoNube(false);
-                  setConexionEstado('conectado');
-                  setUltimaSinc(new Date().toLocaleTimeString());
+                const snapCat = await getDocs(colCategorias);
+                if (snapCat.empty) {
+                  for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
+                  }
+                }
+              } catch (e) {
+                console.warn("Error al verificar semillas iniciales:", e);
+              }
 
-                  if (!eventoUrlProcesado.current && list.length > 0) {
-                    const params = new URLSearchParams(window.location.search);
-                    let targetId = params.get('eventoId');
-                    if (!targetId && window.location.hash) {
-                      const match = window.location.hash.match(/#\/evento\/(.+)/);
-                      if (match) targetId = match[1];
-                    }
-                    if (targetId) {
-                      const evEncontrado = list.find(e => e.id === targetId);
-                      if (evEncontrado) {
-                        setEventoSeleccionado(evEncontrado);
-                        if (evEncontrado.fecha) {
-                          const parsedDate = parseLocalDate(evEncontrado.fecha);
-                          setCurrentDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
-                        }
-                        eventoUrlProcesado.current = true;
+              if (!activo) return;
+
+              // Real-time listener for EVENTS across ALL clients
+              const unsubEventos = onSnapshot(colEventos, (snapshot) => {
+                const list = [];
+                snapshot.forEach(docSnap => {
+                  list.push({ id: docSnap.id, ...docSnap.data() });
+                });
+                setEventos(list);
+                setCargandoNube(false);
+                setConexionEstado('conectado');
+                setUltimaSinc(new Date().toLocaleTimeString());
+
+                // URL parameter direct link handler
+                if (!eventoUrlProcesado.current && list.length > 0) {
+                  const params = new URLSearchParams(window.location.search);
+                  let targetId = params.get('eventoId');
+                  if (!targetId && window.location.hash) {
+                    const match = window.location.hash.match(/#\/evento\/(.+)/);
+                    if (match) targetId = match[1];
+                  }
+                  if (targetId) {
+                    const evEncontrado = list.find(e => e.id === targetId);
+                    if (evEncontrado) {
+                      setEventoSeleccionado(evEncontrado);
+                      if (evEncontrado.fecha) {
+                        const parsedDate = parseLocalDate(evEncontrado.fecha);
+                        setCurrentDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
                       }
+                      eventoUrlProcesado.current = true;
                     }
                   }
-                }, (err) => {
-                  console.error("Error en Snapshot Eventos:", err);
-                  setConexionEstado('error');
-                  setCargandoNube(false);
+                }
+              }, (err) => {
+                console.error("Error en Snapshot Eventos:", err);
+                setConexionEstado('error');
+                setCargandoNube(false);
+              });
+
+              // Real-time listener for CATEGORIES
+              const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
+                const catObj = {};
+                snapshot.forEach(docSnap => {
+                  const d = docSnap.data();
+                  catObj[d.id || docSnap.id] = d;
                 });
+                setCategoriasMap(Object.keys(catObj).length > 0 ? catObj : CATEGORIAS_DEFAULT);
+              }, (err) => console.error("Error en Snapshot Categorías:", err));
 
-                const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
-                  const catObj = {};
-                  snapshot.forEach(docSnap => {
-                    const d = docSnap.data();
-                    catObj[d.id || docSnap.id] = d;
-                  });
-                  setCategoriasMap(Object.keys(catObj).length > 0 ? catObj : CATEGORIAS_DEFAULT);
-                }, (err) => console.error("Error en Snapshot Categorías:", err));
-
-                const unsubNotas = onSnapshot(colNotas, (snapshot) => {
-                  let foundNote = false;
+              // Real-time listener for SHARED PUBLIC NOTES
+              const unsubNotas = onSnapshot(colNotas, (snapshot) => {
+                if (!snapshot.empty) {
                   snapshot.forEach(docSnap => {
                     if (docSnap.id === 'global_note') {
                       setNotasRapidas(docSnap.data().contenido || '');
-                      foundNote = true;
                     }
                   });
-                  if (!foundNote && snapshot.empty) {
-                    setNotasRapidas("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
-                  }
-                }, (err) => console.error("Error en Snapshot Notas:", err));
+                } else {
+                  setNotasRapidas("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
+                }
+              }, (err) => console.error("Error en Snapshot Notas:", err));
 
-                unsubscribersRef.current = [unsubEventos, unsubCategorias, unsubNotas];
-              }
+              unsubscribersRef.current = [unsubEventos, unsubCategorias, unsubNotas];
             });
+
+            authUnsubRef.current = unsubAuth;
           } catch (e) {
             console.error("Error al conectar Firebase:", e);
             setConexionEstado('error');
@@ -484,11 +513,22 @@
           initAndListen();
         } else {
           window.addEventListener('firebase-loaded', initAndListen);
-          return () => window.removeEventListener('firebase-loaded', initAndListen);
         }
 
+        // Limpieza única: siempre desuscribe listeners de Firestore/Auth y el
+        // listener de carga de Firebase, sin importar por qué rama haya entrado.
         return () => {
+          activo = false;
+          window.removeEventListener('firebase-loaded', initAndListen);
           unsubscribersRef.current.forEach(u => u && u());
+          unsubscribersRef.current = [];
+          if (authUnsubRef.current) authUnsubRef.current();
+        };
+      }, []);
+
+      useEffect(() => {
+        return () => {
+          if (debounceNotasRef.current) clearTimeout(debounceNotasRef.current);
         };
       }, []);
 
@@ -518,7 +558,7 @@
         let catIdFinal = datosEvento.categoria;
 
         if (nuevaCategoriaObj) {
-          const newId = 'cat-' + Date.now();
+          const newId = 'cat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
           const nuevaCat = { id: newId, nombre: nuevaCategoriaObj.nombre, hex: nuevaCategoriaObj.hex };
           setCategoriasMap(prev => ({ ...prev, [newId]: nuevaCat }));
           catIdFinal = newId;
@@ -534,7 +574,7 @@
           }
         }
 
-        const evId = datosEvento.id || 'ev-' + Date.now();
+        const evId = datosEvento.id || 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         const eventoAlineado = {
           ...datosEvento,
           id: evId,
@@ -644,7 +684,7 @@
           ev.fecha,
           ev.horaInicio || '',
           ev.horaFin || '',
-          categoriasMap[ev.categoria]?.nombre || ev.categoria,
+          `"${(categoriasMap[ev.categoria]?.nombre || ev.categoria || '').toString().replace(/"/g, '""')}"`,
           `"${(ev.ubicacion || '').replace(/"/g, '""')}"`,
           ev.importante ? "SI" : "NO",
           `"${(ev.descripcion || '').replace(/"/g, '""')}"`
@@ -691,7 +731,7 @@
                       </span>
                     ) : conexionEstado === 'error' ? (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                        <Icon name="alertTriangle" className="w-3 h-3" /> Conectando a red...
+                        <Icon name="alertTriangle" className="w-3 h-3" /> Error de sincronización
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
@@ -1453,7 +1493,7 @@
         const nomLimpio = nombre.trim();
         if (!nomLimpio) return;
 
-        const newId = 'cat-' + Date.now();
+        const newId = 'cat-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         const nuevaCat = { id: newId, nombre: nomLimpio, hex: color };
 
         if (firebaseRef.current && dbReady) {
@@ -1615,7 +1655,7 @@
             </div>
 
             <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100 shrink-0">
-              <button 
+              <button
                 onClick={onCerrar}
                 className="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition"
               >
