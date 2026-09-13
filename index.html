@@ -37,12 +37,18 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
     body { font-family: 'Inter', sans-serif; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .animate-pulse-ring { animation: pulse-ring 2s infinite ease-in-out; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen antialiased selection:bg-brand-500 selection:text-white">
@@ -172,10 +178,9 @@
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
           </svg>
         ),
-        calendarPlus: (
+        refresh: (
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>
-            <line x1="12" y1="14" x2="12" y2="18"></line><line x1="10" y1="16" x2="14" y2="16"></line>
+            <polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
           </svg>
         )
       };
@@ -252,15 +257,16 @@
 
     function App() {
       const [dbReady, setDbReady] = useState(false);
-      const [authUserId, setAuthUserId] = useState(null);
       const [cargandoNube, setCargandoNube] = useState(true);
+      const [conexionEstado, setConexionEstado] = useState('conectando'); // 'conectado', 'error', 'conectando'
+      const [ultimaSinc, setUltimaSinc] = useState('');
 
       const [currentDate, setCurrentDate] = useState(new Date());
       const [vistaModo, setVistaModo] = useState('mes');
       
       const [eventos, setEventos] = useState([]);
       const [categoriasMap, setCategoriasMap] = useState(CATEGORIAS_DEFAULT);
-      const [notasRapidas, setNotasRapidas] = useState("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
+      const [notasRapidas, setNotasRapidas] = useState('');
 
       const [filtroTexto, setFiltroTexto] = useState('');
       const [filtroCategoria, setFiltroCategoria] = useState('todos');
@@ -276,6 +282,7 @@
       const firebaseRef = useRef(null);
       const eventoUrlProcesado = useRef(false);
       const debounceNotasRef = useRef(null);
+      const unsubscribersRef = useRef([]);
 
       const mostrarNotificacion = (texto, tipo = 'exito') => {
         setNotificacion({ texto, tipo });
@@ -287,23 +294,17 @@
         urlParams.set('eventoId', evento.id);
         const shareUrl = `${window.location.origin}${window.location.pathname}?${urlParams.toString()}`;
         
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(shareUrl)
-            .then(() => mostrarNotificacion("¡Enlace copiado al portapapeles!"))
-            .catch(() => mostrarNotificacion("No se pudo copiar el enlace", "error"));
-        } else {
-          const textArea = document.createElement("textarea");
-          textArea.value = shareUrl;
-          document.body.appendChild(textArea);
-          textArea.select();
-          try {
-            document.execCommand('copy');
-            mostrarNotificacion("¡Enlace copiado al portapapeles!");
-          } catch (err) {
-            mostrarNotificacion("Error al copiar enlace", "error");
-          }
-          document.body.removeChild(textArea);
+        const textArea = document.createElement("textarea");
+        textArea.value = shareUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          mostrarNotificacion("¡Enlace único copiado al portapapeles!");
+        } catch (err) {
+          mostrarNotificacion("No se pudo copiar el enlace", "error");
         }
+        document.body.removeChild(textArea);
       };
 
       const exportarICS = (evento) => {
@@ -354,12 +355,14 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        mostrarNotificacion("Archivo .ics generado para tu calendario.");
+        mostrarNotificacion("Archivo .ics descargado.");
       };
 
       useEffect(() => {
-        const initFirebase = async () => {
+        const initAndListen = async () => {
           if (!window.FirebaseSDK) return;
+          const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, onSnapshot, setDoc, getDocs } = window.FirebaseSDK;
+
           try {
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'calendario-institucional-publico';
             const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
@@ -371,140 +374,130 @@
               appId: "1:123:web:abc"
             };
 
-            const app = window.FirebaseSDK.initializeApp(firebaseConfig);
-            const auth = window.FirebaseSDK.getAuth(app);
-            const db = window.FirebaseSDK.getFirestore(app);
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
 
-            firebaseRef.current = { db, appId };
+            firebaseRef.current = { db, appId, auth };
 
             const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
             if (initialToken) {
-              await window.FirebaseSDK.signInWithCustomToken(auth, initialToken);
+              await signInWithCustomToken(auth, initialToken);
             } else {
-              await window.FirebaseSDK.signInAnonymously(auth);
+              await signInAnonymously(auth);
             }
 
-            window.FirebaseSDK.onAuthStateChanged(auth, async (user) => {
+            onAuthStateChanged(auth, async (user) => {
               if (user) {
-                setAuthUserId(user.uid);
                 setDbReady(true);
+
+                // Mandated Firestore Collection Paths: /artifacts/{appId}/public/data/{collectionName}
+                const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+                const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
+                const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
+
+                // Check if database is empty to seed initial sample data ONCE
+                try {
+                  const snapEv = await getDocs(colEventos);
+                  if (snapEv.empty) {
+                    for (const ev of EVENTOS_SEMILLA) {
+                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
+                    }
+                  }
+
+                  const snapCat = await getDocs(colCategorias);
+                  if (snapCat.empty) {
+                    for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
+                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
+                    }
+                  }
+                } catch (e) {
+                  console.warn("Error al verificar semillas iniciales:", e);
+                }
+
+                // Real-time listener for EVENTS across ALL clients
+                const unsubEventos = onSnapshot(colEventos, (snapshot) => {
+                  const list = [];
+                  snapshot.forEach(docSnap => {
+                    list.push({ id: docSnap.id, ...docSnap.data() });
+                  });
+                  setEventos(list);
+                  setCargandoNube(false);
+                  setConexionEstado('conectado');
+                  setUltimaSinc(new Date().toLocaleTimeString());
+
+                  // URL parameter direct link handler
+                  if (!eventoUrlProcesado.current && list.length > 0) {
+                    const params = new URLSearchParams(window.location.search);
+                    let targetId = params.get('eventoId');
+                    if (!targetId && window.location.hash) {
+                      const match = window.location.hash.match(/#\/evento\/(.+)/);
+                      if (match) targetId = match[1];
+                    }
+                    if (targetId) {
+                      const evEncontrado = list.find(e => e.id === targetId);
+                      if (evEncontrado) {
+                        setEventoSeleccionado(evEncontrado);
+                        if (evEncontrado.fecha) {
+                          const parsedDate = parseLocalDate(evEncontrado.fecha);
+                          setCurrentDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
+                        }
+                        eventoUrlProcesado.current = true;
+                      }
+                    }
+                  }
+                }, (err) => {
+                  console.error("Error en Snapshot Eventos:", err);
+                  setConexionEstado('error');
+                  setCargandoNube(false);
+                });
+
+                // Real-time listener for CATEGORIES
+                const unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
+                  const catObj = {};
+                  snapshot.forEach(docSnap => {
+                    const d = docSnap.data();
+                    catObj[d.id || docSnap.id] = d;
+                  });
+                  if (Object.keys(catObj).length > 0) {
+                    setCategoriasMap(catObj);
+                  }
+                }, (err) => console.error("Error en Snapshot Categorías:", err));
+
+                // Real-time listener for SHARED PUBLIC NOTES
+                const unsubNotas = onSnapshot(colNotas, (snapshot) => {
+                  if (!snapshot.empty) {
+                    snapshot.forEach(docSnap => {
+                      if (docSnap.id === 'global_note') {
+                        setNotasRapidas(docSnap.data().contenido || '');
+                      }
+                    });
+                  } else {
+                    setNotasRapidas("• Entregar planificaciones el viernes.\n• Consultar listas de asistencia.");
+                  }
+                }, (err) => console.error("Error en Snapshot Notas:", err));
+
+                unsubscribersRef.current = [unsubEventos, unsubCategorias, unsubNotas];
               }
             });
           } catch (e) {
-            console.error("Error al iniciar Firebase:", e);
-            setDbReady(true);
+            console.error("Error al conectar Firebase:", e);
+            setConexionEstado('error');
             setCargandoNube(false);
           }
         };
 
         if (window.FirebaseSDK) {
-          initFirebase();
+          initAndListen();
         } else {
-          window.addEventListener('firebase-loaded', initFirebase);
-          return () => window.removeEventListener('firebase-loaded', initFirebase);
+          window.addEventListener('firebase-loaded', initAndListen);
+          return () => window.removeEventListener('firebase-loaded', initAndListen);
         }
-      }, []);
-
-      useEffect(() => {
-        if (!dbReady || !firebaseRef.current) return;
-        const { db, appId } = firebaseRef.current;
-        const { collection, doc, getDoc, setDoc, onSnapshot } = window.FirebaseSDK;
-
-        setCargandoNube(true);
-
-        const colEventos = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
-        const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
-        const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
-        const docInitMeta = doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'initialization');
-
-        let unsubEventos = () => {};
-        let unsubCategorias = () => {};
-        let unsubNotas = () => {};
-
-        const startListening = () => {
-          unsubEventos = onSnapshot(colEventos, (snapshot) => {
-            const list = [];
-            snapshot.forEach(docSnap => {
-              list.push({ id: docSnap.id, ...docSnap.data() });
-            });
-            setEventos(list);
-            setCargandoNube(false);
-
-            if (!eventoUrlProcesado.current && list.length > 0) {
-              const params = new URLSearchParams(window.location.search);
-              let targetId = params.get('eventoId');
-              
-              if (!targetId && window.location.hash) {
-                const match = window.location.hash.match(/#\/evento\/(.+)/);
-                if (match) targetId = match[1];
-              }
-
-              if (targetId) {
-                const evEncontrado = list.find(e => e.id === targetId);
-                if (evEncontrado) {
-                  setEventoSeleccionado(evEncontrado);
-                  if (evEncontrado.fecha) {
-                    const parsedDate = parseLocalDate(evEncontrado.fecha);
-                    setCurrentDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
-                  }
-                  eventoUrlProcesado.current = true;
-                }
-              }
-            }
-          }, (err) => {
-            console.error("Error leyendo eventos:", err);
-            setCargandoNube(false);
-          });
-
-          unsubCategorias = onSnapshot(colCategorias, (snapshot) => {
-            const catObj = {};
-            snapshot.forEach(docSnap => {
-              const d = docSnap.data();
-              catObj[d.id || docSnap.id] = d;
-            });
-            if (Object.keys(catObj).length > 0) {
-              setCategoriasMap(catObj);
-            }
-          }, (err) => console.error("Error leyendo categorías:", err));
-
-          unsubNotas = onSnapshot(colNotas, (snapshot) => {
-            if (!snapshot.empty) {
-              snapshot.forEach(docSnap => {
-                if (docSnap.id === 'global_note') {
-                  setNotasRapidas(docSnap.data().contenido || '');
-                }
-              });
-            }
-          }, (err) => console.error("Error leyendo notas:", err));
-        };
-
-        const seedAndInit = async () => {
-          try {
-            const initSnap = await getDoc(docInitMeta);
-            if (!initSnap.exists()) {
-              for (const ev of EVENTOS_SEMILLA) {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
-              }
-              for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
-              }
-              await setDoc(docInitMeta, { initialized: true, timestamp: new Date().toISOString() });
-            }
-          } catch (err) {
-            console.error("Error al verificar semilla:", err);
-          } finally {
-            startListening();
-          }
-        };
-
-        seedAndInit();
 
         return () => {
-          unsubEventos();
-          unsubCategorias();
-          unsubNotas();
+          unsubscribersRef.current.forEach(u => u && u());
         };
-      }, [dbReady]);
+      }, []);
 
       const guardarNotasEnNube = (nuevoTexto) => {
         setNotasRapidas(nuevoTexto);
@@ -520,11 +513,12 @@
                 contenido: nuevoTexto,
                 actualizado: new Date().toISOString()
               });
+              setUltimaSinc(new Date().toLocaleTimeString());
             } catch (err) {
-              console.error("Error guardando notas:", err);
+              console.error("Error guardando nota:", err);
             }
           }
-        }, 600);
+        }, 500);
       };
 
       const handleGuardarEvento = async (datosEvento, nuevaCategoriaObj = null) => {
@@ -542,7 +536,7 @@
               const { doc, setDoc } = window.FirebaseSDK;
               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', newId), nuevaCat);
             } catch (e) {
-              console.error("Error guardando categoría en nube", e);
+              console.error("Error guardando categoría:", e);
             }
           }
         }
@@ -554,23 +548,15 @@
           categoria: catIdFinal
         };
 
-        setEventos(prev => {
-          const existe = prev.some(e => e.id === evId);
-          if (existe) {
-            return prev.map(ev => ev.id === evId ? eventoAlineado : ev);
-          }
-          return [eventoAlineado, ...prev];
-        });
-
-        mostrarNotificacion(datosEvento.id ? "Evento actualizado correctamente." : "Evento creado con éxito.");
-
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
             const { doc, setDoc } = window.FirebaseSDK;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', evId), eventoAlineado);
+            mostrarNotificacion(datosEvento.id ? "Evento actualizado permanentemente." : "Evento publicado en red global.");
           } catch (err) {
-            console.error("Error guardando evento en nube:", err);
+            console.error("Error guardando evento en la nube:", err);
+            mostrarNotificacion("Error al guardar evento en la nube", "error");
           }
         }
 
@@ -581,23 +567,21 @@
       const handleEliminarEvento = async () => {
         if (!eventoAEliminar) return;
         const targetId = eventoAEliminar.id;
-        
-        setEventos(prev => prev.filter(ev => ev.id !== targetId));
 
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
             const { doc, deleteDoc } = window.FirebaseSDK;
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', targetId));
+            mostrarNotificacion("Evento eliminado de la red global.");
           } catch (err) {
-            console.error("Error eliminando en nube:", err);
-            mostrarNotificacion("Error al eliminar en la nube.", "error");
+            console.error("Error eliminando en la nube:", err);
+            mostrarNotificacion("Error al eliminar evento en la nube.", "error");
           }
         }
 
         setEventoAEliminar(null);
         setEventoSeleccionado(null);
-        mostrarNotificacion("Evento eliminado correctamente.");
       };
 
       const mesAnterior = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -636,7 +620,7 @@
 
       const eventosFiltrados = useMemo(() => {
         return eventos.filter(ev => {
-          const coincideTexto = ev.titulo.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+          const coincideTexto = (ev.titulo || '').toLowerCase().includes(filtroTexto.toLowerCase()) ||
                                 (ev.descripcion && ev.descripcion.toLowerCase().includes(filtroTexto.toLowerCase()));
           const coincideCategoria = filtroCategoria === 'todos' || ev.categoria === filtroCategoria;
           const coincideImportancia = filtroImportancia === 'todos' ||
@@ -663,7 +647,7 @@
         const headers = ["ID", "Titulo", "Fecha", "Hora Inicio", "Hora Fin", "Categoria", "Ubicacion", "Importante", "Descripcion"];
         const rows = eventos.map(ev => [
           ev.id,
-          `"${ev.titulo.replace(/"/g, '""')}"`,
+          `"${(ev.titulo || '').replace(/"/g, '""')}"`,
           ev.fecha,
           ev.horaInicio || '',
           ev.horaFin || '',
@@ -697,7 +681,6 @@
             </div>
           )}
 
-          {}
           <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
@@ -706,12 +689,24 @@
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">Público • Gestión Educativa</span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                      <Icon name="wifi" className="w-3 h-3" /> 🟢 En Red Global
-                    </span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">Gestión Institucional</span>
+                    
+                    {conexionEstado === 'conectado' ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Sincronizado en Tiempo Real
+                      </span>
+                    ) : conexionEstado === 'error' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                        <Icon name="alertTriangle" className="w-3 h-3" /> Conectando a red...
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                        <Icon name="refresh" className="w-3 h-3 animate-spin" /> Conectando...
+                      </span>
+                    )}
                   </div>
-                  <h1 className="text-xl font-bold text-slate-900 leading-tight">Calendario Institucional Global</h1>
+                  <h1 className="text-xl font-bold text-slate-900 leading-tight">Calendario Público Compartido</h1>
                 </div>
               </div>
 
@@ -724,22 +719,22 @@
                   <span className="hidden sm:inline">Exportar CSV</span>
                 </button>
 
-                <div className="px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg flex items-center gap-1.5">
-                  <Icon name="database" className="w-4 h-4" />
-                  <span>Nube Activa</span>
+                <div className="px-3 py-1.5 text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200 rounded-lg flex items-center gap-1.5">
+                  <Icon name="database" className="w-4 h-4 text-brand-600" />
+                  <span>Base Global</span>
+                  {ultimaSinc && <span className="text-[10px] text-slate-400">({ultimaSinc})</span>}
                 </div>
               </div>
             </div>
           </header>
 
-          {}
           <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-3">
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="relative w-full md:w-64">
                 <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="text" 
-                  placeholder="Buscar evento..."
+                  placeholder="Buscar eventos..."
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition"
@@ -802,15 +797,14 @@
             </div>
           </div>
 
-          {}
           <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
             
             <div className="lg:col-span-3 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden relative">
               {cargandoNube && (
-                <div className="absolute inset-0 bg-white/60 backdrop-blur-xs z-20 flex items-center justify-center">
-                  <div className="flex items-center gap-2 text-brand-600 font-bold text-xs">
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-xs z-20 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-brand-600 font-bold text-xs bg-white px-4 py-3 rounded-2xl shadow-lg border border-slate-100">
                     <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Sincronizando eventos públicos...</span>
+                    <span>Cargando eventos desde la nube global...</span>
                   </div>
                 </div>
               )}
@@ -838,7 +832,6 @@
                 </div>
               </div>
 
-              {}
               {vistaModo === 'mes' ? (
                 <div className="flex-1 p-3 sm:p-4">
                   <div className="grid grid-cols-7 mb-2 text-center">
@@ -987,7 +980,6 @@
               )}
             </div>
 
-            {}
             <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center space-x-2 mb-3 pb-2 border-b border-slate-100">
@@ -1060,22 +1052,22 @@
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">Notas Públicas Compartidas</h3>
                   </div>
-                  <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                    <Icon name="check" className="w-3 h-3" /> Nube Sincronizada
+                  <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <Icon name="check" className="w-3 h-3" /> Auto-Guardado
                   </span>
                 </div>
                 <textarea
                   value={notasRapidas}
                   onChange={(e) => guardarNotasEnNube(e.target.value)}
-                  placeholder="Apuntes compartidos..."
+                  placeholder="Escribe notas visibles para todos los usuarios..."
                   className="w-full h-32 resize-none text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 focus:bg-white transition"
                 ></textarea>
+                <p className="text-[10px] text-slate-400 mt-1.5 italic">Lo que escribas aquí se sincroniza en vivo en todos los navegadores.</p>
               </div>
 
             </div>
           </main>
 
-          {}
           {eventoSeleccionado && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
@@ -1130,7 +1122,7 @@
                     onClick={() => exportarICS(eventoSeleccionado)}
                     className="w-full py-2 px-3 text-xs font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-xl transition flex items-center justify-center gap-1.5 border border-emerald-200"
                   >
-                    <Icon name="calendarPlus" className="w-4 h-4 text-emerald-600" />
+                    <Icon name="download" className="w-4 h-4 text-emerald-600" />
                     <span>Exportar (.ics)</span>
                   </button>
                 </div>
@@ -1173,7 +1165,6 @@
             </div>
           )}
 
-          {}
           {eventoAEliminar && (
             <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-60 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
@@ -1185,7 +1176,7 @@
                 </div>
 
                 <p className="text-xs text-slate-600 mb-4">
-                  Estás a punto de eliminar <strong>"{eventoAEliminar.titulo}"</strong> de forma pública.
+                  Estás a punto de eliminar <strong>"{eventoAEliminar.titulo}"</strong> de forma permanente para todos los usuarios.
                 </p>
 
                 <div className="flex items-center justify-end space-x-2">
@@ -1199,14 +1190,13 @@
                     onClick={handleEliminarEvento}
                     className="px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl transition"
                   >
-                    Sí, Eliminar
+                    Sí, Eliminar Para Todos
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {}
           {modalNuevoAbierto && (
             <FormularioEvento 
               key={eventoEditar?.id || eventoEditar?.fecha || 'nuevo-evento'}
@@ -1217,7 +1207,6 @@
             />
           )}
 
-          {}
           {modalColoresAbierto && (
             <ModalGestionColores
               categoriasMap={categoriasMap}
@@ -1230,7 +1219,7 @@
           )}
 
           <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
-            <p>© 2026 Calendario Institucional Educativo • Sincronización Pública en Tiempo Real</p>
+            <p>© 2026 Calendario Institucional Educativo • Sincronización Global en Tiempo Real</p>
           </footer>
         </div>
       );
@@ -1443,7 +1432,7 @@
                   type="submit"
                   className="px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition shadow-sm"
                 >
-                  {eventoInicial?.id ? 'Guardar Cambios' : 'Crear Evento'}
+                  {eventoInicial?.id ? 'Guardar Cambios' : 'Publicar Evento'}
                 </button>
               </div>
             </form>
@@ -1467,13 +1456,12 @@
         const newId = 'cat-' + Date.now();
         const nuevaCat = { id: newId, nombre: nomLimpio, hex: color };
 
-        setCategoriasMap(prev => ({ ...prev, [newId]: nuevaCat }));
-
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
             const { doc, setDoc } = window.FirebaseSDK;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', newId), nuevaCat);
+            mostrarNotificacion("Categoría creada permanentemente.");
           } catch (err) {
             console.error("Error guardando categoría:", err);
           }
@@ -1481,7 +1469,6 @@
 
         setNombre('');
         setColor('#2563eb');
-        mostrarNotificacion("Categoría creada con éxito.");
       };
 
       const handleGuardarEdicion = async (id) => {
@@ -1489,43 +1476,32 @@
         if (!nomLimpio) return;
 
         const catActualizada = { id, nombre: nomLimpio, hex: colorEdit };
-        setCategoriasMap(prev => ({
-          ...prev,
-          [id]: catActualizada
-        }));
 
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
             const { doc, setDoc } = window.FirebaseSDK;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', id), catActualizada);
+            mostrarNotificacion("Categoría actualizada.");
           } catch (err) {
             console.error("Error actualizando categoría:", err);
           }
         }
 
         setIdEditando(null);
-        mostrarNotificacion("Categoría actualizada.");
       };
 
       const handleEliminarCategoria = async (id) => {
-        setCategoriasMap(prev => {
-          const copia = { ...prev };
-          delete copia[id];
-          return copia;
-        });
-
         if (firebaseRef.current && dbReady) {
           try {
             const { db, appId } = firebaseRef.current;
             const { doc, deleteDoc } = window.FirebaseSDK;
             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', id));
+            mostrarNotificacion("Categoría eliminada.");
           } catch (err) {
             console.error("Error eliminando categoría:", err);
           }
         }
-
-        mostrarNotificacion("Categoría eliminada.");
       };
 
       return (
@@ -1534,7 +1510,7 @@
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 shrink-0">
               <div className="flex items-center space-x-2">
                 <Icon name="palette" className="w-5 h-5 text-brand-600" />
-                <h3 className="text-base font-bold text-slate-800">Administrar Categorías</h3>
+                <h3 className="text-base font-bold text-slate-800">Administrar Categorías Compartidas</h3>
               </div>
               <button onClick={onCerrar} className="text-slate-400 hover:text-slate-600">
                 <Icon name="x" className="w-5 h-5" />
@@ -1546,7 +1522,7 @@
               <div className="flex items-center gap-2">
                 <input 
                   type="text" 
-                  placeholder="Nombre..."
+                  placeholder="Nombre de la categoría..."
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
