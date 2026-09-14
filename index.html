@@ -377,7 +377,7 @@
 
         const initAndListen = async () => {
           if (!window.FirebaseSDK || !activo) return;
-          const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, onSnapshot, setDoc, getDocs } = window.FirebaseSDK;
+          const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, doc, getDoc, onSnapshot, setDoc, getDocs } = window.FirebaseSDK;
 
           try {
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'calendario-institucional-publico';
@@ -417,20 +417,22 @@
               const colCategorias = collection(db, 'artifacts', appId, 'public', 'data', 'categorias');
               const colNotas = collection(db, 'artifacts', appId, 'public', 'data', 'notas');
 
-              // Check if database is empty to seed initial sample data ONCE
+              // Sembrar datos de ejemplo SOLO la primera vez que existe la base de datos.
+              // Usamos un documento marcador en vez de "¿está vacía la colección?" porque
+              // si un usuario borra todos los eventos o categorías a propósito, la colección
+              // vuelve a quedar vacía y NO debe re-sembrarse: lo borrado debe quedar borrado.
               try {
-                const snapEv = await getDocs(colEventos);
-                if (snapEv.empty) {
+                const refEstadoSemilla = doc(db, 'artifacts', appId, 'public', 'data', 'meta', 'estado_semilla');
+                const snapEstadoSemilla = await getDoc(refEstadoSemilla);
+
+                if (!snapEstadoSemilla.exists()) {
                   for (const ev of EVENTOS_SEMILLA) {
                     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'eventos', ev.id), ev);
                   }
-                }
-
-                const snapCat = await getDocs(colCategorias);
-                if (snapCat.empty) {
                   for (const catKey of Object.keys(CATEGORIAS_DEFAULT)) {
                     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'categorias', catKey), CATEGORIAS_DEFAULT[catKey]);
                   }
+                  await setDoc(refEstadoSemilla, { sembrado: true, fecha: new Date().toISOString() });
                 }
               } catch (e) {
                 console.warn("Error al verificar semillas iniciales:", e);
@@ -482,7 +484,7 @@
                   const d = docSnap.data();
                   catObj[d.id || docSnap.id] = d;
                 });
-                setCategoriasMap(Object.keys(catObj).length > 0 ? catObj : CATEGORIAS_DEFAULT);
+                setCategoriasMap(catObj);
               }, (err) => console.error("Error en Snapshot Categorías:", err));
 
               // Real-time listener for SHARED PUBLIC NOTES
